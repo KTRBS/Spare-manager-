@@ -1,27 +1,38 @@
 import Foundation
 
 class SignerEngine {
-    func sign(ipaPath: String, p12Path: String, provPath: String, password: String) {
-        let outputIpa = NSTemporaryDirectory() + "signed.ipa"
+    static let shared = SignerEngine()
+    
+    func runZSign(ipa: URL, p12: URL, prov: URL, pass: String) -> URL? {
+        let fileManager = FileManager.default
+        let tempOutput = fileManager.temporaryDirectory.appendingPathComponent("signed_output.ipa")
         
-        // アプリ内に同梱した zsign 実行ファイルのパスを取得
-        guard let zsignBinary = Bundle.main.path(forResource: "zsign", ofType: nil) else { return }
+        // Bundle内のzsignバイナリのパスを取得
+        guard let zsignBinary = Bundle.main.path(forResource: "zsign", ofType: nil) else {
+            print("zsign binary not found")
+            return nil
+        }
         
-        // 実行コマンドの構築
-        let task = Process()
+        // 実行権限の付与（野良アプリなら必要）
+        chmod(zsignBinary, 0o755)
+        
+        let task = Process() // 注意：iOS実機ではNSTask/Processの使用に制限がある場合があります
         task.executableURL = URL(fileURLWithPath: zsignBinary)
         task.arguments = [
-            "-k", p12Path,
-            "-p", password,
-            "-m", provPath,
-            "-o", outputIpa,
-            ipaPath
+            "-k", p12.path,
+            "-p", pass,
+            "-m", prov.path,
+            "-o", tempOutput.path,
+            ipa.path
         ]
         
-        // 実行
-        try? task.run()
-        task.waitUntilExit()
-        
-        // 成功したら「サイン済み」フォルダへ移動
+        do {
+            try task.run()
+            task.waitUntilExit()
+            return tempOutput
+        } catch {
+            print("Sign error: \(error)")
+            return nil
+        }
     }
 }
